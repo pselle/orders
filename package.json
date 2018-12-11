@@ -4,6 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "prestart": "rm -f invalid.csv && rm -f valid.csv",
     "test": "jest",
     "start": "node index.js"
   },
