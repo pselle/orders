@@ -108,7 +108,7 @@ function isValidBroker(order) {
 }
 
 function writeToStream(stream, order) {
-  stream.write(Object.values(order).join(',') + "\n");
+  stream.write(`${order.broker}, ${order.sequence_id}\n`);
 }
 
 
