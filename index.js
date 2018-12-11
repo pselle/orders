@@ -1,6 +1,6 @@
 const fs = require('fs');
 const parse = require('csv-parse');
-const { firms, symbols } = require('./resources/validators.js');
+const { brokers, symbols, brokerTracking } = require('./resources/validators.js');
 
 const parser = parse({ delimiter: ','})
 
@@ -29,11 +29,12 @@ function loadData() {
   });
 }
 
+const invalidStream = fs.createWriteStream('invalid.csv', {flags: 'a'});
+const validStream = fs.createWriteStream('valid.csv', {flags: 'a'});
+
 async function run() {
-  let valid = [],
-   invalid = [];
   const data = await loadData();
-  const headers = data[0];
+  // slice ditches the headers
   const formatted = data.slice(1).map((order) => {
     return {
       timestamp: new Date(order[0]),
@@ -46,18 +47,25 @@ async function run() {
       side: order[7]
     };
   });
-  rateLimiting = {};
-  const invalidStream = fs.createWriteStream('invalid.csv', {flags: 'a'});
-  const validStream = fs.createWriteStream('valid.csv', {flags: 'a'});
-  formatted.forEach((order, index) => {
-    if(!isValidBroker(order)) {
+  processRecords(formatted);
+}
+
+run();
+
+function processRecords(records) {
+  records.forEach((order) => {
+    if(!containsNecessaryKeys(order) || !isValidBroker(order) || !isValidSymbol(order)) {
       writeToStream(invalidStream, order);
       return;
-    };
+    }
+
+    // Calculate if order is valid for the broker: it must not be >3rd
+    // order in last minute, and its id must also be unique based on other orders
+    // filed by that broker
     const minute = order.timestamp.getMinutes();
-    const currentBroker = rateLimiting[order.broker] = rateLimiting[order.broker] || {};
-    if(currentBroker.currentMinute === undefined) {
-      rateLimiting[order.broker].currentMinute = minute;
+    const currentBroker = brokerTracking[order.broker];
+    if(currentBroker.currentMinute === null) {
+      currentBroker.currentMinute = minute;
       currentBroker.orders = 1;
     }
     if(currentBroker.currentMinute === minute) {
@@ -71,13 +79,7 @@ async function run() {
       currentBroker.orders = 1;
     }
 
-    if(!symbols.includes(order.symbol)) {
-      writeToStream(invalidStream, order);
-      return;
-    }
-
-    const brokerOrderIds = currentBroker.ids = currentBroker.ids || [];
-    if(brokerOrderIds.includes(order.sequence_id)) {
+    if(currentBroker.ids.includes(order.sequence_id)) {
       writeToStream(invalidStream, order);
       return;
     }
@@ -87,15 +89,13 @@ async function run() {
   });
 }
 
-run();
-
 function containsNecessaryKeys(order) {
   const keys = ['broker', 'symbol', 'type', 'quantity', 'sequence_id', 'side', 'price'];
-  keys.forEach((key) => {
-    if(order[key] === undefined) {
+  for(var i = 0; i < keys.length; i++) {
+    if(order[keys[i]] === undefined) {
       return false;
     }
-  });
+  }
   return true;
 }
 
@@ -104,11 +104,11 @@ function isValidSymbol(order) {
 }
 
 function isValidBroker(order) {
-  return firms.includes(order.broker);
+  return brokers.includes(order.broker);
 }
 
 function writeToStream(stream, order) {
-  stream.write(Object.values(order).join(','));
+  stream.write(Object.values(order).join(',') + "\n");
 }
 
 

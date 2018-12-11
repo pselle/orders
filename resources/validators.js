@@ -1,4 +1,4 @@
-const firms = ['Fidelity',
+const brokers = ['Fidelity',
               'Charles Schwab',
               'Edward Jones',
               'Ameriprise Financial',
@@ -21,4 +21,13 @@ const symbols = ['BARK',
                 'LGHT',
                 'VELL'];
 
-module.exports = { firms, symbols };
+const brokerTracking = brokers.reduce((acc, curr) => {
+  acc[curr] = {
+    currentMinute: null,
+    orders: 0,
+    ids: []
+  }
+  return acc;
+}, {});
+
+module.exports = { brokers, symbols, brokerTracking };
