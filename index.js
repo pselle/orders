@@ -35,16 +35,23 @@ async function run() {
   const data = await loadData();
   const headers = data[0];
   const formatted = data.slice(1).map((order) => {
-    var result = {}
-    headers.forEach((key,i) => result[key.toLowerCase()] = order[i]);
-    result['timestamp'] = new Date(result['time stamp']); // format as timestamp for math
-    result.id = result['sequence id']; // map because the other one is annoying
-    return result;
+    return {
+      timestamp: new Date(order[0]),
+      broker: order[1],
+      sequence_id: order[2],
+      type: order[3],
+      symbol: order[4],
+      quantity: order[5],
+      price: order[6],
+      side: order[7]
+    };
   });
   rateLimiting = {};
+  const invalidStream = fs.createWriteStream('invalid.csv', {flags: 'a'});
+  const validStream = fs.createWriteStream('valid.csv', {flags: 'a'});
   formatted.forEach((order, index) => {
-    if(!firms.includes(order.broker)) {
-      invalid.push(order);
+    if(!isValidBroker(order)) {
+      writeToStream(invalidStream, order);
       return;
     };
     const minute = order.timestamp.getMinutes();
@@ -55,7 +62,7 @@ async function run() {
     }
     if(currentBroker.currentMinute === minute) {
       if(currentBroker.orders === 3) {
-        invalid.push(order);
+        writeToStream(invalidStream, order);
         return;
       }
       currentBroker.orders += 1;
@@ -65,23 +72,44 @@ async function run() {
     }
 
     if(!symbols.includes(order.symbol)) {
-      invalid.push(order);
+      writeToStream(invalidStream, order);
       return;
     }
 
     const brokerOrderIds = currentBroker.ids = currentBroker.ids || [];
-    if(brokerOrderIds.includes(order.id)) {
-      invalid.push(order);
+    if(brokerOrderIds.includes(order.sequence_id)) {
+      writeToStream(invalidStream, order);
       return;
     }
-    currentBroker.ids.push(order.id);
+    currentBroker.ids.push(order.sequence_id);
 
-    // console.log(order)
-    valid.push(order)
+    writeToStream(validStream, order);
   });
-  return { valid, invalid };
 }
 
 run();
 
-module.exports = run;
+function containsNecessaryKeys(order) {
+  const keys = ['broker', 'symbol', 'type', 'quantity', 'sequence_id', 'side', 'price'];
+  keys.forEach((key) => {
+    if(order[key] === undefined) {
+      return false;
+    }
+  });
+  return true;
+}
+
+function isValidSymbol(order) {
+  return symbols.includes(order.symbol);
+}
+
+function isValidBroker(order) {
+  return firms.includes(order.broker);
+}
+
+function writeToStream(stream, order) {
+  stream.write(Object.values(order).join(','));
+}
+
+
+module.exports = { containsNecessaryKeys, isValidSymbol, isValidBroker };
